@@ -1,0 +1,23 @@
+{
+  "model": "mlx-community/whisper-large-v3-turbo",
+  "hotkey": "<ctrl>+<alt>+<cmd>+<space>",
+  "language": null,
+  "whisper_initial_prompt": "",
+  "paste_mode": "terminal",
+  "clipboard": true,
+  "paste_delay_ms": 60,
+  "min_seconds": 0.3,
+  "terminal_bundle_ids": [
+    "com.apple.Terminal",
+    "com.googlecode.iterm2",
+    "com.mitchellh.ghostty",
+    "com.github.wez.wezterm",
+    "net.kovidgoyal.kitty",
+    "io.alacritty",
+    "dev.warp.Warp-Stable",
+    "com.microsoft.VSCode",
+    "com.microsoft.VSCodeInsiders",
+    "com.todesktop.230313mzl4w4u92"
+  ],
+  "prompt_prefix": "[Dictated by voice, transcribed by Whisper. Likely contains transcription errors in names, acronyms, technical terms, and non-English words. Read for intent and correct obvious mis-transcriptions in context before acting.]\n\n"
+}

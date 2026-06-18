@@ -1,0 +1,8 @@
+# Pinned for reproducible installs. mlx, mlx-metal, huggingface-hub and tqdm
+# come transitively from mlx-whisper; pyobjc-core comes from the frameworks.
+mlx-whisper==0.4.3
+rumps==0.4.0
+sounddevice==0.5.5
+numpy==2.4.6
+pyobjc-framework-Cocoa==12.2
+pyobjc-framework-Quartz==12.2
