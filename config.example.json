@@ -6,6 +6,7 @@
   "paste_mode": "terminal",
   "clipboard": true,
   "paste_delay_ms": 60,
+  "type_chunk_delay_ms": 22,
   "min_seconds": 0.3,
   "terminal_bundle_ids": [
     "com.apple.Terminal",

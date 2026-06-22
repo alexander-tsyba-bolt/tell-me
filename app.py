@@ -33,6 +33,7 @@ DEFAULTS = {
     "whisper_initial_prompt": "",
     "paste_mode": "terminal",          # terminal | always | never
     "paste_delay_ms": 60,
+    "type_chunk_delay_ms": 22,         # delay between typed chunks (clipboard:false); raise for slow/browser terminals
     "min_seconds": 0.3,
     "terminal_bundle_ids": [
         "com.apple.Terminal",
@@ -672,14 +673,29 @@ class DictationApp(rumps.App):
 
     def _type_text(self, text):
         """Type text into the focused app via synthesized Unicode key events,
-        leaving the clipboard untouched (needs Accessibility)."""
-        for i in range(0, len(text), 20):  # small chunks for reliable delivery
+        leaving the clipboard untouched (needs Accessibility).
+
+        Two things matter for browser-based terminals such as the Claude Agents
+        xterm.js app (native apps like Terminal/VS Code tolerate the old, sloppier
+        version):
+
+        1. The Unicode string is attached only to the key-DOWN event. When both
+           down and up carry the string, the browser inserts the chunk twice,
+           which produced the scrambled, overlapping paste.
+        2. The per-chunk delay must be large enough for the terminal to drain its
+           hidden input textarea before the next chunk arrives. At 4 ms the chunks
+           raced and the textarea was re-read mid-fill, so fragments restarted at
+           20-char boundaries. ``type_chunk_delay_ms`` (default 22) is tunable.
+        """
+        delay = max(0, self.cfg.get("type_chunk_delay_ms", 22)) / 1000.0
+        for i in range(0, len(text), 20):  # ~20 UTF-16 units is the reliable max per event
             piece = text[i:i + 20]
-            for keydown in (True, False):
-                ev = CGEventCreateKeyboardEvent(None, 0, keydown)
-                CGEventKeyboardSetUnicodeString(ev, len(piece), piece)
-                CGEventPost(kCGHIDEventTap, ev)
-            time.sleep(0.004)
+            down = CGEventCreateKeyboardEvent(None, 0, True)
+            CGEventKeyboardSetUnicodeString(down, len(piece), piece)
+            CGEventPost(kCGHIDEventTap, down)
+            up = CGEventCreateKeyboardEvent(None, 0, False)  # key-up carries no string
+            CGEventPost(kCGHIDEventTap, up)
+            time.sleep(delay)
 
     # -- HUD (main thread) -------------------------------------------------
     # A borderless frosted panel with two labels (semantic colors so it reads
