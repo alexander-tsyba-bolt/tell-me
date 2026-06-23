@@ -623,17 +623,38 @@ class DictationApp(rumps.App):
                 msg = "Pasted ✓"
             else:
                 msg = "Copied to clipboard ✓"
-        elif deliver and self._do_paste(lambda: self._type_text(full)):
+        elif deliver and self._has_input_focus() and self._do_paste(lambda: self._type_text(full)):
             msg = "Typed ✓"  # clipboard left untouched
         else:
-            # Clipboard disabled but nowhere to type -> copy as a fallback so the
-            # transcript is not lost.
+            # Clipboard disabled but nowhere to deliver (no paste target or no
+            # focused text field) -> copy as a fallback so the transcript is not lost.
             self._set_clipboard(full)
-            msg = "Copied (no paste target)"
+            msg = "Copied (no focus)" if deliver else "Copied (no paste target)"
         self._hud_done(msg)
         log.info("delivered: %s", msg)
 
     # -- clipboard + paste -------------------------------------------------
+    def _has_input_focus(self):
+        """Return True if any UI element currently has keyboard focus.
+
+        Uses the system-wide AX element so no per-app PID is needed.
+        Falls back to True on any error to avoid silently losing transcripts.
+        """
+        try:
+            from ApplicationServices import (
+                AXUIElementCreateSystemWide,
+                AXUIElementCopyAttributeValue,
+                kAXFocusedUIElementAttribute,
+            )
+            sys_elem = AXUIElementCreateSystemWide()
+            err, focused = AXUIElementCopyAttributeValue(
+                sys_elem, kAXFocusedUIElementAttribute, None
+            )
+            return err == 0 and focused is not None
+        except Exception:
+            log.warning("focus check failed; assuming focused")
+            return True
+
     def _set_clipboard(self, text):
         pb = NSPasteboard.generalPasteboard()
         pb.clearContents()
