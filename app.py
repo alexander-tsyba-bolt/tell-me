@@ -617,15 +617,7 @@ class DictationApp(rumps.App):
             import mlx_whisper
 
             patch_progress()
-            kwargs = dict(
-                path_or_hf_repo=self.cfg["model"],
-                verbose=False,
-                # Prevents each 30s window from conditioning on the prior window's
-                # output. The default (True) creates a hallucination feedback loop
-                # when the recording ends with silence: the model predicts its own
-                # last token indefinitely, repeating a word 50+ times.
-                condition_on_previous_text=False,
-            )
+            kwargs = dict(path_or_hf_repo=self.cfg["model"], verbose=False)
             if self.cfg.get("language"):
                 kwargs["language"] = self.cfg["language"]
             if self.cfg.get("whisper_initial_prompt"):
