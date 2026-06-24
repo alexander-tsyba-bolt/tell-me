@@ -317,6 +317,57 @@ def patch_progress():
     mod._wd_patched = True
 
 
+def _trim_trailing_silence(audio, sample_rate=16000, threshold=0.01, pad_ms=300):
+    """Strip trailing silence before passing audio to Whisper.
+
+    Trailing silence gives the decoder nothing to predict, and with
+    condition_on_previous_text=True it would loop on the last spoken token.
+    We scan from the end in 10 ms chunks and keep everything up to the last
+    active chunk plus a short pad so the final word isn't clipped.
+    """
+    chunk = sample_rate // 100  # 10 ms
+    pad = sample_rate * pad_ms // 1000
+    i = len(audio)
+    while i > chunk:
+        i -= chunk
+        if np.sqrt(np.mean(audio[i:i + chunk] ** 2)) >= threshold:
+            break
+    return audio[:min(len(audio), i + chunk + pad)]
+
+
+def _collapse_repetitions(text, max_repeats=2):
+    """Collapse Whisper hallucination loops in the transcript.
+
+    When condition_on_previous_text lets a repetition loop through anyway,
+    this catches n-gram runs longer than max_repeats and truncates them.
+    Works on word n-grams from length 10 down to 1.
+    """
+    words = text.split()
+    if len(words) < 4:
+        return text
+    result = []
+    i = 0
+    while i < len(words):
+        placed = False
+        for n in range(min(10, (len(words) - i) // 2), 0, -1):
+            phrase = words[i:i + n]
+            count = 1
+            j = i + n
+            while j + n <= len(words) and words[j:j + n] == phrase:
+                count += 1
+                j += n
+            if count > max_repeats:
+                result.extend(phrase * max_repeats)
+                i = j
+                placed = True
+                log.warning("collapsed %d repetitions of %r", count, " ".join(phrase))
+                break
+        if not placed:
+            result.append(words[i])
+            i += 1
+    return " ".join(result)
+
+
 def _rounded_mask_image(w, h, radius):
     """An exact-size rounded-rect mask so NSVisualEffectView clips to rounded
     corners. This is the documented way; a layer cornerRadius alone leaves
@@ -556,6 +607,7 @@ class DictationApp(rumps.App):
             AppHelper.callAfter(self._finish_short)
             return
         audio = np.concatenate(frames, axis=0).reshape(-1).astype(np.float32)
+        audio = _trim_trailing_silence(audio)
         dur = len(audio) / SAMPLE_RATE
         if dur < float(self.cfg.get("min_seconds", 0.3)):
             AppHelper.callAfter(self._finish_short)
@@ -565,7 +617,15 @@ class DictationApp(rumps.App):
             import mlx_whisper
 
             patch_progress()
-            kwargs = dict(path_or_hf_repo=self.cfg["model"], verbose=False)
+            kwargs = dict(
+                path_or_hf_repo=self.cfg["model"],
+                verbose=False,
+                # Prevents each 30s window from conditioning on the prior window's
+                # output. The default (True) creates a hallucination feedback loop
+                # when the recording ends with silence: the model predicts its own
+                # last token indefinitely, repeating a word 50+ times.
+                condition_on_previous_text=False,
+            )
             if self.cfg.get("language"):
                 kwargs["language"] = self.cfg["language"]
             if self.cfg.get("whisper_initial_prompt"):
@@ -574,7 +634,7 @@ class DictationApp(rumps.App):
             t0 = time.time()
             result = mlx_whisper.transcribe(audio, **kwargs)
             elapsed = time.time() - t0
-            text = (result.get("text") or "").strip()
+            text = _collapse_repetitions((result.get("text") or "").strip())
             log.info("transcribed %.1fs audio in %.1fs -> %d chars", dur, elapsed, len(text))
         except Exception as e:
             log.exception("transcription failed")
