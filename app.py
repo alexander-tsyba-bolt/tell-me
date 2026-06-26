@@ -9,6 +9,7 @@ Everything tunable lives in config.json next to this file.
 """
 
 import os
+import re
 import sys
 import json
 import time
@@ -612,6 +613,14 @@ class DictationApp(rumps.App):
         if dur < float(self.cfg.get("min_seconds", 0.3)):
             AppHelper.callAfter(self._finish_short)
             return
+        # Append 0.5 s silence so Whisper sees a clean end-of-speech boundary.
+        # When the user stops recording immediately after speaking there is zero
+        # trailing silence; without this padding the decoder emits "..." instead
+        # of finalising the last words. Added after the min_seconds check so the
+        # guard and ETA estimate use the real speech duration, not the padded one.
+        audio_for_whisper = np.concatenate(
+            [audio, np.zeros(int(SAMPLE_RATE * 0.5), dtype=np.float32)]
+        )
 
         try:
             import mlx_whisper
@@ -624,9 +633,13 @@ class DictationApp(rumps.App):
                 kwargs["initial_prompt"] = self.cfg["whisper_initial_prompt"]
             AppHelper.callAfter(self._begin_progress, dur)
             t0 = time.time()
-            result = mlx_whisper.transcribe(audio, **kwargs)
+            result = mlx_whisper.transcribe(audio_for_whisper, **kwargs)
             elapsed = time.time() - t0
             text = _collapse_repetitions((result.get("text") or "").strip())
+            # Strip trailing "..." Whisper emits when it expects continuation but
+            # audio ends. The silence pad above usually prevents this; strip is
+            # the defensive fallback.
+            text = re.sub(r"[\s.…]*\.\.\.[\s.…]*$|[\s…]*…[\s…]*$", "", text).rstrip()
             log.info("transcribed %.1fs audio in %.1fs -> %d chars", dur, elapsed, len(text))
         except Exception as e:
             log.exception("transcription failed")
